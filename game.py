@@ -221,6 +221,8 @@ def run_game(test_mode=False):
     fade = 0; particles = []
     running = True; frames = 0
     won = False
+    paused = False
+    started = False
 
     bg_cache = {}
 
@@ -240,6 +242,10 @@ def run_game(test_mode=False):
             px = (i*137) % SCREEN_W
             py = (i*61) % SCREEN_H
             pygame.draw.circle(surf, WHITE, (px, py), 1)
+        # decorative clouds
+        for i, (cx, cy, cw) in enumerate([(80,90,90), (320,50,70), (600,110,80), (800,60,60)]):
+            pygame.draw.ellipse(surf, (255,255,255,40), (cx, cy, cw, 30))
+            pygame.draw.ellipse(surf, (255,255,255,40), (cx+15, cy-12, cw-20, 25))
         bg_cache[key] = surf
         return surf
 
@@ -257,6 +263,14 @@ def run_game(test_mode=False):
             if e.type == pygame.QUIT:
                 running = False
             elif e.type == pygame.KEYDOWN:
+                if not started:
+                    if e.key == pygame.K_RETURN or e.key == pygame.K_SPACE:
+                        started = True; load_level(0); player.lives = 3
+                    continue
+                if paused:
+                    if e.key == pygame.K_ESCAPE or e.key == pygame.K_p:
+                        paused = False
+                    continue
                 if e.key == pygame.K_SPACE:
                     player.flip()
                     flash = 8
@@ -265,10 +279,33 @@ def run_game(test_mode=False):
                 elif e.key == pygame.K_r and (not player.alive or won):
                     load_level(0); won = False; player.lives = 3
                 elif e.key == pygame.K_ESCAPE:
-                    running = False
+                    paused = True
 
         keys = pygame.key.get_pressed()
         player.vx = 0
+        if not started:
+            # START SCREEN
+            screen.blit(render_bg(level['theme'], player.gdir), (0,0))
+            font = pygame.font.Font(None, 64)
+            title = font.render('GRAVITY FLIP', True, WHITE)
+            screen.blit(title, (SCREEN_W//2 - title.get_width()//2, 200))
+            f2 = pygame.font.Font(None, 30)
+            sub = f2.render('Press ENTER to start', True, YELLOW)
+            screen.blit(sub, (SCREEN_W//2 - sub.get_width()//2, 300))
+            hint = f2.render('SPACE = flip gravity | LEFT/RIGHT = move | UP = jump', True, (220,220,220))
+            screen.blit(hint, (SCREEN_W//2 - hint.get_width()//2, 360))
+            pygame.display.flip()
+            continue
+        if paused:
+            screen.blit(render_bg(level['theme'], player.gdir), (0,0))
+            font = pygame.font.Font(None, 64)
+            pt = font.render('PAUSED', True, WHITE)
+            screen.blit(pt, (SCREEN_W//2 - pt.get_width()//2, 250))
+            f2 = pygame.font.Font(None, 30)
+            ph = f2.render('Press ESC to resume', True, YELLOW)
+            screen.blit(ph, (SCREEN_W//2 - ph.get_width()//2, 340))
+            pygame.display.flip()
+            continue
         if keys[pygame.K_LEFT]:
             player.vx = -SPEED; player.facing = -1
         if keys[pygame.K_RIGHT]:
@@ -276,10 +313,9 @@ def run_game(test_mode=False):
         if keys[pygame.K_UP]:
             player.jump()
 
-        plat_rects = [p for p,_ in []]
-        plat_rects = [p for p,_ in []] + [p for p in level['platforms']]
-        # above: hack to keep type clear; platform list is plain rects
         plat_rects = [p for p in level['platforms']]
+        if player.star > 0 and player.grounded and random.random() < 0.15:
+            particles.append(Particle(player.rect.centerx, player.rect.bottom, YELLOW, 1.2))
 
         player.update(plat_rects, level['moving'])
         for m in level['moving']: m.update()
@@ -393,8 +429,11 @@ def run_game(test_mode=False):
         for s in level['saws']: s.draw(screen, cam)
 
         gx = level['goal'].x - cam; gy = level['goal'].y
-        pygame.draw.rect(screen, RED, (gx,gy,24,80))
-        pygame.draw.circle(screen, YELLOW, (gx+12,gy-8), 8)
+        gh = level['goal'].h
+        pygame.draw.rect(screen, (180,180,180), (gx, gy, 8, gh))
+        pygame.draw.circle(screen, YELLOW, (gx+4, gy+6), 10)
+        # flag cloth
+        pygame.draw.polygon(screen, RED, [(gx+8, gy+14), (gx+58, gy+24), (gx+8, gy+36)])
 
         player.draw(screen, cam)
         for p in particles: p.draw(screen)
