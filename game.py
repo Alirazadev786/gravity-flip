@@ -1,5 +1,6 @@
 import sys, random, math
 import pygame
+import sounds
 
 SCREEN_W, SCREEN_H = 900, 650
 FPS = 60
@@ -12,6 +13,8 @@ WHITE = (255,255,255); BLACK = (0,0,0)
 RED = (230,60,60); GREEN = (70,200,90); BLUE = (70,130,255)
 PURPLE = (170,70,255); YELLOW = (255,225,70); ORANGE = (255,150,50)
 CYAN = (0,210,210); GRAY = (110,110,110)
+ICE_BLUE = (180,220,255); LAVA_RED = (255,80,30)
+DARK_GRAY = (60,60,70)
 
 class Player:
     def __init__(self, x, y):
@@ -24,11 +27,21 @@ class Player:
         self.lives = 3
         self.facing = 1
         self.star = 0
+        self.shield = False
+        self.jumps_left = 1
+        self.dash_timer = 0
+        self.dash_cooldown = 0
 
     def update(self, rects, movs):
         if not self.alive:
             return
-        self.rect.x += self.vx
+        if self.dash_timer > 0:
+            self.dash_timer -= 1
+            self.rect.x += self.facing * 14
+        else:
+            self.rect.x += self.vx
+        if self.dash_cooldown > 0:
+            self.dash_cooldown -= 1
         for r in rects + [m.rect for m in movs]:
             if self.rect.colliderect(r):
                 if self.vx > 0: self.rect.right = r.left
@@ -59,15 +72,29 @@ class Player:
             self.star -= 1
 
     def jump(self):
-        if self.alive and self.grounded:
+        if not self.alive:
+            return
+        if self.grounded:
             self.vy = JUMP * self.gdir
             self.grounded = False
+            self.jumps_left = 1
+        elif self.jumps_left > 0:
+            self.vy = JUMP * 0.85 * self.gdir
+            self.jumps_left -= 1
+
+    def dash(self):
+        if self.dash_cooldown > 0 or not self.alive:
+            return False
+        self.dash_timer = 12
+        self.dash_cooldown = 45
+        return True
 
     def flip(self):
         if not self.alive:
             return
         self.gdir *= -1
         self.vy = 0
+        self.jumps_left = 1
 
     def draw(self, screen, cam):
         x = self.rect.x - cam; y = self.rect.y
@@ -175,6 +202,89 @@ class PhasePlatform:
         pygame.draw.rect(screen, (100,40,160), (x, y, self.rect.w, 6))
 
 
+class Shield:
+    def __init__(self, x, y):
+        self.rect = pygame.Rect(x, y, 24, 24)
+        self.pulse = 0
+    def update(self):
+        self.pulse += 1
+    def draw(self, screen, cam):
+        x = self.rect.x - cam; y = self.rect.y
+        r = 12 + int(math.sin(self.pulse / 10) * 2)
+        pygame.draw.circle(screen, CYAN, (int(x + 12), int(y + 12)), r, 3)
+        pygame.draw.circle(screen, (0,150,200), (int(x + 12), int(y + 12)), r - 4, 2)
+
+class Boss:
+    def __init__(self, x, y):
+        self.rect = pygame.Rect(x, y, 90, 90)
+        self.hp = 10
+        self.max_hp = 10
+        self.vx = 2
+        self.vy = 0
+        self.t = 0
+        self.attack_timer = 0
+        self.alive = True
+        self.hit_flash = 0
+        self.shots = []
+    def update(self, platforms, player):
+        if not self.alive:
+            return
+        self.t += 1
+        if player.alive:
+            dx = player.rect.centerx - self.rect.centerx
+            if abs(dx) > 30:
+                self.rect.x += self.vx if dx > 0 else -self.vx
+        self.vy += GRAVITY
+        self.rect.y += self.vy
+        for r in platforms:
+            if self.rect.colliderect(r):
+                if self.vy > 0:
+                    self.rect.bottom = r.top; self.vy = 0
+                elif self.vy < 0:
+                    self.rect.top = r.bottom; self.vy = 0
+        self.attack_timer -= 1
+        if self.attack_timer <= 0 and player.alive:
+            self.attack_timer = 90
+            dx = player.rect.centerx - self.rect.centerx
+            dy = player.rect.centery - self.rect.centery
+            d = math.hypot(dx, dy) or 1
+            self.shots.append([self.rect.centerx, self.rect.centery, dx/d*4, dy/d*4])
+        for s in self.shots[:]:
+            s[0] += s[2]; s[1] += s[3]
+            if s[0] < -100 or s[0] > 2000 or s[1] < -100 or s[1] > 1200:
+                self.shots.remove(s)
+        if self.hit_flash > 0:
+            self.hit_flash -= 1
+    def hit(self):
+        self.hp -= 1
+        self.hit_flash = 10
+        if self.hp <= 0:
+            self.alive = False
+            return True
+        return False
+    def draw(self, screen, cam):
+        x = self.rect.x - cam; y = self.rect.y
+        if self.hit_flash > 0 and self.hit_flash // 2 % 2 == 0:
+            body = (255,255,255)
+        else:
+            body = (180,40,40)
+        pygame.draw.rect(screen, DARK_GRAY, (x-4, y-4, self.rect.w+8, self.rect.h+8), 3)
+        pygame.draw.rect(screen, body, (x, y, self.rect.w, self.rect.h), border_radius=12)
+        pygame.draw.rect(screen, (120,20,20), (x+10, y+10, self.rect.w-20, self.rect.h-20), border_radius=8)
+        pygame.draw.circle(screen, YELLOW, (int(x+self.rect.w//2), int(y+30)), 10)
+        pygame.draw.circle(screen, BLACK, (int(x+self.rect.w//2), int(y+30)), 5)
+        pygame.draw.rect(screen, DARK_GRAY, (x-12, y+20, 14, 30))
+        pygame.draw.rect(screen, DARK_GRAY, (x+self.rect.w-2, y+20, 14, 30))
+        pygame.draw.rect(screen, DARK_GRAY, (x+12, y+self.rect.h-10, 20, 14))
+        pygame.draw.rect(screen, DARK_GRAY, (x+self.rect.w-32, y+self.rect.h-10, 20, 14))
+        bar_w = 80; bar_h = 8
+        bx = x + (self.rect.w - bar_w)//2
+        pygame.draw.rect(screen, BLACK, (bx-2, y-20, bar_w+4, bar_h+4))
+        pygame.draw.rect(screen, RED, (bx, y-18, bar_w * (self.hp/self.max_hp), bar_h))
+        for s in self.shots:
+            pygame.draw.circle(screen, LAVA_RED, (int(s[0]-cam), int(s[1])), 8)
+            pygame.draw.circle(screen, YELLOW, (int(s[0]-cam), int(s[1])), 4)
+
 class Particle:
     def __init__(self, x, y, color, spread=3):
         self.x = x; self.y = y
@@ -263,10 +373,95 @@ def make_levels():
         'phase': [PhasePlatform(pygame.Rect(350,360,120,30), 80, 50),
                   PhasePlatform(pygame.Rect(700,280,120,30), 70, 60)],
     })
+    # Level 6: Ice World
+    L.append({
+        'name': 'Ice World',
+        'platforms': [pygame.Rect(-300,580,1500,40), pygame.Rect(-300,30,1500,40)],
+        'moving': [MovingPlatform(pygame.Rect(300,450,100,30),'x',200,2.5),
+                  MovingPlatform(pygame.Rect(650,350,100,30),'y',150,2.8)],
+        'enemies': [FlyEnemy(350,470,55,1.8), FlyEnemy(600,480,50,1.6), FlyEnemy(850,430,45,1.9,True)],
+        'saws': [Saw(500,460), Saw(750,460)],
+        'spikes': [pygame.Rect(150,540,40,40), pygame.Rect(190,540,40,40),
+                   pygame.Rect(150,30,40,40), pygame.Rect(190,30,40,40),
+                   pygame.Rect(550,540,40,40), pygame.Rect(590,540,40,40)],
+        'springs': [pygame.Rect(80,540,30,40)],
+        'stars': [pygame.Rect(400,450,20,20)],
+        'shields': [Shield(550, 450)],
+        'coins': [pygame.Rect(320,410,20,20), pygame.Rect(360,410,20,20),
+                  pygame.Rect(680,310,20,20), pygame.Rect(720,310,20,20)],
+        'goal': pygame.Rect(1160,30,24,550),
+        'start': (100,500),
+        'theme': (200,230,255,240,248,255),
+        'portals': [PortalFlip(420,460), PortalFlip(780,30)],
+        'phase': [PhasePlatform(pygame.Rect(280,380,120,30), 90, 40)],
+    })
+    # Level 7: Lava World
+    L.append({
+        'name': 'Lava World',
+        'platforms': [pygame.Rect(-300,580,1500,40), pygame.Rect(-300,30,1500,40)],
+        'moving': [MovingPlatform(pygame.Rect(350,430,90,30),'x',180,2.6)],
+        'enemies': [FlyEnemy(250,470,50,1.9), FlyEnemy(550,480,55,1.7), FlyEnemy(800,440,45,2.0,True)],
+        'saws': [Saw(450,460), Saw(700,460)],
+        'spikes': [pygame.Rect(120,540,40,40), pygame.Rect(160,540,40,40),
+                   pygame.Rect(120,30,40,40), pygame.Rect(160,30,40,40),
+                   pygame.Rect(600,540,40,40), pygame.Rect(640,540,40,40),
+                   pygame.Rect(600,30,40,40), pygame.Rect(640,30,40,40)],
+        'springs': [pygame.Rect(70,540,30,40)],
+        'stars': [pygame.Rect(500,450,20,20)],
+        'shields': [Shield(300, 450)],
+        'coins': [pygame.Rect(380,390,20,20), pygame.Rect(420,390,20,20),
+                  pygame.Rect(720,400,20,20), pygame.Rect(760,400,20,20)],
+        'goal': pygame.Rect(1160,30,24,550),
+        'start': (80,500),
+        'theme': (255,80,30,255,150,50),
+        'portals': [PortalFlip(480,460), PortalFlip(820,30)],
+    })
+    # Level 8: Space World (zero-g feel, more portals)
+    L.append({
+        'name': 'Space World',
+        'platforms': [pygame.Rect(-300,580,1500,40), pygame.Rect(-300,30,1500,40)],
+        'moving': [MovingPlatform(pygame.Rect(250,420,100,30),'x',220,3.0),
+                  MovingPlatform(pygame.Rect(600,320,100,30),'y',180,3.2)],
+        'enemies': [FlyEnemy(300,470,60,2.0), FlyEnemy(650,480,55,1.8), FlyEnemy(880,430,50,2.1,True)],
+        'saws': [Saw(520,460), Saw(780,460)],
+        'spikes': [pygame.Rect(200,540,40,40), pygame.Rect(240,540,40,40),
+                   pygame.Rect(200,30,40,40), pygame.Rect(240,30,40,40)],
+        'springs': [pygame.Rect(60,540,30,40)],
+        'stars': [pygame.Rect(420,450,20,20), pygame.Rect(700,450,20,20)],
+        'shields': [Shield(550, 450)],
+        'coins': [pygame.Rect(280,380,20,20), pygame.Rect(320,380,20,20),
+                  pygame.Rect(680,280,20,20), pygame.Rect(720,280,20,20),
+                  pygame.Rect(500,500,20,20)],
+        'goal': pygame.Rect(1160,30,24,550),
+        'start': (100,500),
+        'theme': (10,10,40,40,20,80),
+        'portals': [PortalFlip(350,460), PortalFlip(600,30), PortalFlip(850,460)],
+        'phase': [PhasePlatform(pygame.Rect(450,360,120,30), 60, 40),
+                  PhasePlatform(pygame.Rect(750,280,120,30), 50, 50)],
+    })
+    # Level 9: Boss Fight
+    L.append({
+        'name': 'Boss Arena',
+        'platforms': [pygame.Rect(-300,580,1500,40), pygame.Rect(-300,30,1500,40)],
+        'moving': [],
+        'enemies': [FlyEnemy(250,470,45,1.8), FlyEnemy(700,480,45,1.6)],
+        'saws': [Saw(600,460)],
+        'spikes': [pygame.Rect(150,540,40,40), pygame.Rect(190,540,40,40),
+                   pygame.Rect(150,30,40,40), pygame.Rect(190,30,40,40)],
+        'springs': [pygame.Rect(70,540,30,40)],
+        'stars': [pygame.Rect(400,450,20,20)],
+        'coins': [pygame.Rect(350,500,20,20), pygame.Rect(500,500,20,20),
+                  pygame.Rect(650,500,20,20)],
+        'goal': pygame.Rect(1160,30,24,550),
+        'start': (100,500),
+        'theme': (40,10,30,120,20,60),
+        'boss': Boss(800, 450),
+    })
     return L
 
 def run_game(test_mode=False):
     pygame.init()
+    sounds.init()
     screen = pygame.display.set_mode((SCREEN_W, SCREEN_H))
     pygame.display.set_caption('Gravity Flip')
     clock = pygame.time.Clock()
@@ -332,8 +527,14 @@ def run_game(test_mode=False):
                 if e.key == pygame.K_SPACE:
                     player.flip()
                     flash = 8
+                    sounds.play('flip')
                     for _ in range(22):
                         particles.append(Particle(player.rect.centerx, player.rect.centery, CYAN, 5))
+                elif e.key == pygame.K_LSHIFT or e.key == pygame.K_RSHIFT:
+                    if player.dash():
+                        sounds.play('dash')
+                        for _ in range(12):
+                            particles.append(Particle(player.rect.centerx, player.rect.centery, CYAN, 3))
                 elif e.key == pygame.K_r and (not player.alive or won):
                     load_level(0); won = False; player.lives = 3
                 elif e.key == pygame.K_ESCAPE:
@@ -350,7 +551,7 @@ def run_game(test_mode=False):
             f2 = pygame.font.Font(None, 30)
             sub = f2.render('Press ENTER to start', True, YELLOW)
             screen.blit(sub, (SCREEN_W//2 - sub.get_width()//2, 300))
-            hint = f2.render('SPACE = flip gravity | LEFT/RIGHT = move | UP = jump', True, (220,220,220))
+            hint = f2.render('SPACE = flip | LEFT/RIGHT = move | UP/DOWN = jump | SHIFT = dash', True, (220,220,220))
             screen.blit(hint, (SCREEN_W//2 - hint.get_width()//2, 360))
             pygame.display.flip()
             continue
@@ -370,6 +571,8 @@ def run_game(test_mode=False):
             player.vx = SPEED; player.facing = 1
         if keys[pygame.K_UP]:
             player.jump()
+        if keys[pygame.K_DOWN]:
+            player.jump()
 
         plat_rects = list(level['platforms'])
         for ph in level.get('phase', []):
@@ -387,18 +590,30 @@ def run_game(test_mode=False):
         for s in level['spikes']:
             if player.rect.colliderect(s):
                 player.alive = False
+                sounds.play('death')
         for sp in level['springs']:
             if player.rect.colliderect(sp):
                 player.vy = -17 * player.gdir; player.grounded = False
+                sounds.play('spring')
                 for _ in range(14): particles.append(Particle(sp.centerx, sp.centery, ORANGE, 4))
         for st in level['stars'][:]:
             if player.rect.colliderect(st):
                 level['stars'].remove(st); player.star = 360
+                sounds.play('star')
                 for _ in range(26): particles.append(Particle(st.centerx, st.centery, YELLOW, 6))
         for c in level['coins'][:]:
             if player.rect.colliderect(c):
                 level['coins'].remove(c); player.coins += 1
+                sounds.play('coin')
                 for _ in range(10): particles.append(Particle(c.centerx, c.centery, YELLOW))
+        for sh in level.get('shields', [])[:]:
+            sh.update()
+            if player.rect.colliderect(sh.rect):
+                level['shields'].remove(sh)
+                player.shield = True
+                sounds.play('shield')
+                for _ in range(20):
+                    particles.append(Particle(sh.rect.centerx, sh.rect.centery, CYAN, 5))
 
         # hazards: enemy / saw hits
         hit_hazard = False
@@ -406,9 +621,11 @@ def run_game(test_mode=False):
             if e.alive and player.rect.colliderect(e.rect):
                 if abs(player.vy * player.gdir) > 3 and player.rect.bottom <= e.rect.centery + 12:
                     e.alive = False; player.vy = -9 * player.gdir; player.coins += 5
+                    sounds.play('hit')
                     for _ in range(16): particles.append(Particle(e.rect.centerx, e.rect.centery, ORANGE, 4))
                 elif player.star > 0:
                     e.alive = False; player.coins += 5
+                    sounds.play('hit')
                     for _ in range(16): particles.append(Particle(e.rect.centerx, e.rect.centery, YELLOW, 4))
                 else:
                     hit_hazard = True
@@ -421,16 +638,72 @@ def run_game(test_mode=False):
             if player.rect.colliderect(pu.rect):
                 player.flip()
                 flash = 10
+                sounds.play('portal')
                 for _ in range(18):
                     particles.append(Particle(pu.rect.centerx, pu.rect.centery, CYAN, 5))
         if hit_hazard:
-            player.alive = False
+            if player.shield:
+                player.shield = False
+                sounds.play('shield')
+                flash = 15
+                for _ in range(30):
+                    particles.append(Particle(player.rect.centerx, player.rect.centery, CYAN, 6))
+            else:
+                player.alive = False
+                sounds.play('death')
+
+        # Boss fight
+        if 'boss' in level and level['boss'].alive:
+            boss = level['boss']
+            boss.update(plat_rects, player)
+            # boss collision
+            if player.rect.colliderect(boss.rect):
+                if player.star > 0:
+                    if boss.hit():
+                        sounds.play('boss_hit')
+                        player.coins += 50
+                        for _ in range(40):
+                            particles.append(Particle(boss.rect.centerx, boss.rect.centery, LAVA_RED, 7))
+                elif abs(player.vy * player.gdir) > 4 and player.rect.bottom <= boss.rect.centery + 20:
+                    if boss.hit():
+                        sounds.play('boss_hit')
+                        player.coins += 50
+                        for _ in range(40):
+                            particles.append(Particle(boss.rect.centerx, boss.rect.centery, LAVA_RED, 7))
+                    player.vy = -12 * player.gdir
+                else:
+                    if player.shield:
+                        player.shield = False
+                        sounds.play('shield')
+                        flash = 15
+                    else:
+                        player.alive = False
+                        sounds.play('death')
+            # boss shots
+            for s in boss.shots[:]:
+                if player.rect.collidepoint(s[0], s[1]):
+                    boss.shots.remove(s)
+                    if player.shield:
+                        player.shield = False
+                        sounds.play('shield')
+                        flash = 15
+                    else:
+                        player.alive = False
+                        sounds.play('death')
+            if not boss.alive and not won:
+                won = True; flash = 20
+                sounds.play('win'); sounds.play('win2'); sounds.play('win3')
+                print('BOSS_DEFEATED')
+                if test_mode:
+                    pygame.quit(); sys.exit(0)
 
         if player.rect.colliderect(level['goal']):
             if level_idx < len(levels)-1:
                 level_idx += 1; load_level(level_idx); flash = 15
+                sounds.play('powerup')
             else:
                 won = True; flash = 20
+                sounds.play('win'); sounds.play('win2'); sounds.play('win3')
                 print('ALL_LEVELS_COMPLETE')
                 if test_mode:
                     pygame.quit(); sys.exit(0)
@@ -500,6 +773,10 @@ def run_game(test_mode=False):
         for s in level['saws']: s.draw(screen, cam)
         for pu in level.get('portals', []):
             pu.draw(screen, cam)
+        for sh in level.get('shields', []):
+            sh.draw(screen, cam)
+        if 'boss' in level and level['boss'].alive:
+            level['boss'].draw(screen, cam)
 
         gx = level['goal'].x - cam; gy = level['goal'].y
         gh = level['goal'].h
@@ -524,7 +801,7 @@ def run_game(test_mode=False):
         font = pygame.font.Font(None, 34)
         font_small = pygame.font.Font(None, 24)
 
-        title = font.render(f'{level["name"]} — {level_idx+1}/4', True, WHITE)
+        title = font.render(f'{level["name"]} — {level_idx+1}/{len(levels)}', True, WHITE)
         screen.blit(title, (16, 10))
         hint = font_small.render('SPACE = flip gravity   LEFT/RIGHT = move   UP = jump   ESC = menu', True, (220,220,220))
         screen.blit(hint, (16, 44))
@@ -544,6 +821,9 @@ def run_game(test_mode=False):
         if player.star > 0:
             stxt = font.render(f'STAR {player.star//60+1}s', True, YELLOW)
             screen.blit(stxt, (SCREEN_W - 230, 50))
+        if player.shield:
+            shtxt = font.render('SHIELD', True, CYAN)
+            screen.blit(shtxt, (SCREEN_W - 230, 86))
         if won:
             wtxt = font.render('YOU WIN! Press R to restart', True, YELLOW)
             screen.blit(wtxt, (SCREEN_W//2 - 200, SCREEN_H//2))
