@@ -33,6 +33,7 @@ class Player:
         self.dash_timer = 0
         self.dash_cooldown = 0
         self.portal_cooldown = 0
+        self.spring_cooldown = 0
 
     def update(self, rects, movs):
         if not self.alive:
@@ -46,10 +47,11 @@ class Player:
             self.rect.x += self.vx
         if self.dash_cooldown > 0:
             self.dash_cooldown -= 1
+        effective_vx = dash_vx if self.dash_timer > 0 else self.vx
         for r in rects + [m.rect for m in movs]:
             if self.rect.colliderect(r):
-                if dash_vx > 0 or self.vx > 0: self.rect.right = r.left
-                elif dash_vx < 0 or self.vx < 0: self.rect.left = r.right
+                if effective_vx > 0: self.rect.right = r.left
+                elif effective_vx < 0: self.rect.left = r.right
 
         self.vy += GRAVITY * self.gdir
         self.rect.y += self.vy
@@ -226,7 +228,10 @@ class Boss:
             self.shots.append([self.rect.centerx, self.rect.centery, dx/d*4, dy/d*4])
         for s in self.shots[:]:
             s[0] += s[2]; s[1] += s[3]
-            if s[0] < -100 or s[0] > 2000 or s[1] < -100 or s[1] > 1200:
+            # remove if off-screen OR hits a platform
+            shot_rect = pygame.Rect(int(s[0]) - 8, int(s[1]) - 8, 16, 16)
+            hit_platform = any(shot_rect.colliderect(r) for r in platforms)
+            if hit_platform or s[0] < -100 or s[0] > 2000 or s[1] < -100 or s[1] > 1200:
                 self.shots.remove(s)
         if self.hit_flash > 0:
             self.hit_flash -= 1
@@ -459,11 +464,11 @@ def run_game(test_mode=False):
         return surf
 
     def load_level(idx, keep_lives=True):
-        nonlocal level, player, cam, fade
+        nonlocal level, player, cam, fade, shake, flash, particles
         old_lives = player.lives if keep_lives else 3
         level = levels[idx]
         player = Player(*level['start'], lives=old_lives)
-        cam = 0; fade = 25
+        cam = 0; fade = 25; shake = 0; flash = 0; particles = []
 
     while running:
         clock.tick(FPS); frames += 1; time += 1
@@ -566,10 +571,13 @@ def run_game(test_mode=False):
                 player.alive = False
                 sounds.play('death')
         for sp in level['springs']:
-            if player.rect.colliderect(sp):
+            if player.rect.colliderect(sp) and not player.spring_cooldown:
                 player.vy = -17 * player.gdir; player.grounded = False
+                player.spring_cooldown = 20
                 sounds.play('spring')
                 for _ in range(14): particles.append(Particle(sp.centerx, sp.centery, ORANGE, 4))
+        if player.spring_cooldown > 0:
+            player.spring_cooldown -= 1
         for st in level['stars'][:]:
             if player.rect.colliderect(st):
                 level['stars'].remove(st); player.star = 360
@@ -640,13 +648,18 @@ def run_game(test_mode=False):
             boss.update(plat_rects, player)
             # boss collision
             if player.rect.colliderect(boss.rect):
+                # stomp check depends on gravity direction
+                if player.gdir > 0:
+                    boss_stomped = abs(player.vy) > 4 and player.rect.bottom <= boss.rect.centery + 20
+                else:
+                    boss_stomped = abs(player.vy) > 4 and player.rect.top >= boss.rect.centery - 20
                 if player.star > 0:
                     if boss.hit():
                         sounds.play('boss_hit')
                         player.coins += 50
                         for _ in range(40):
                             particles.append(Particle(boss.rect.centerx, boss.rect.centery, LAVA_RED, 7))
-                elif abs(player.vy * player.gdir) > 4 and player.rect.bottom <= boss.rect.centery + 20:
+                elif boss_stomped:
                     if boss.hit():
                         sounds.play('boss_hit')
                         player.coins += 50

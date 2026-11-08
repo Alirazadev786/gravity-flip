@@ -528,41 +528,47 @@ def draw_goal_flag(screen, goal, cam, time):
                 pygame.draw.rect(screen, WHITE, (fx, fy, 6, 4))
 
 
+_platform_cache = {}
+
+def _make_platform_texture(w, h, is_ceiling):
+    """Pre-render platform texture for performance."""
+    key = (w, h, is_ceiling)
+    if key in _platform_cache:
+        return _platform_cache[key]
+    surf = pygame.Surface((w, h))
+    if is_ceiling:
+        surf.fill((100,110,130))
+        pygame.draw.rect(surf, (70,80,100), (0, 0, w, h), 2)
+        for i in range(w // 40):
+            sx = i*40
+            pygame.draw.line(surf, (80,90,110), (sx, 0), (sx, h), 1)
+            if i % 2 == 0:
+                pygame.draw.line(surf, (80,90,110), (sx, 20), (sx+40, 20), 1)
+        pygame.draw.rect(surf, (140,150,170), (0, h-4, w, 4))
+    else:
+        surf.fill((139,100,60))
+        pygame.draw.rect(surf, (110,75,45), (0, 0, w, h), 2)
+        pygame.draw.rect(surf, GREEN, (0, 0, w, 10), border_radius=4)
+        pygame.draw.rect(surf, (0,120,40), (0, 8, w, 4))
+        for i in range(w // 8):
+            gx = i*8 + 3
+            blade_h = 4 + (i % 3)
+            pygame.draw.line(surf, (50,180,70), (gx, 8), (gx+2, 8-blade_h), 2)
+        for i in range(w // 20):
+            dx = (i*17) % w
+            dy = 16 + (i*13) % (h-20)
+            pygame.draw.circle(surf, (90,60,35), (dx, dy), 2)
+    _platform_cache[key] = surf
+    return surf
+
 def draw_platform(screen, p, cam, time):
-    """Draw static platform with grass/stone texture."""
+    """Draw static platform with grass/stone texture (cached)."""
     x = p.x - cam
     y = p.y
     w, h = p.w, p.h
-
-    if y < 100:  # ceiling
-        # Stone ceiling
-        pygame.draw.rect(screen, (100,110,130), (x, y, w, h))
-        pygame.draw.rect(screen, (70,80,100), (x, y, w, h), 2)
-        # Stone pattern
-        for i in range(w // 40):
-            sx = x + i*40
-            pygame.draw.line(screen, (80,90,110), (sx, y), (sx, y+h), 1)
-            if i % 2 == 0:
-                pygame.draw.line(screen, (80,90,110), (sx, y+20), (sx+40, y+20), 1)
-        # Highlight bottom edge
-        pygame.draw.rect(screen, (140,150,170), (x, y+h-4, w, 4))
-    else:  # ground
-        # Dirt
-        pygame.draw.rect(screen, (139,100,60), (x, y, w, h))
-        pygame.draw.rect(screen, (110,75,45), (x, y, w, h), 2)
-        # Grass top
-        pygame.draw.rect(screen, GREEN, (x, y, w, 10), border_radius=4)
-        pygame.draw.rect(screen, (0,120,40), (x, y+8, w, 4))
-        # Grass blades
-        for i in range(w // 8):
-            gx = x + i*8 + 3
-            blade_h = 4 + (i % 3)
-            pygame.draw.line(screen, (50,180,70), (gx, y+8), (gx+2, y+8-blade_h), 2)
-        # Dirt speckles
-        for i in range(w // 20):
-            dx = x + (i*17) % w
-            dy = y + 16 + (i*13) % (h-20)
-            pygame.draw.circle(screen, (90,60,35), (dx, dy), 2)
+    is_ceiling = y < 100
+    surf = _make_platform_texture(w, h, is_ceiling)
+    screen.blit(surf, (x, y))
 
 
 def draw_hud(screen, player, level, level_idx, total_levels, time):
