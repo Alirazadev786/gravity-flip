@@ -20,6 +20,8 @@ DARK_GRAY = (60,60,70)
 class Player:
     def __init__(self, x, y, lives=3):
         self.rect = pygame.Rect(x, y, 30, 40)
+        self.fx = float(x)
+        self.fy = float(y)
         self.vx = 0; self.vy = 0
         self.gdir = 1       # 1 = down, -1 = up
         self.grounded = False
@@ -43,41 +45,57 @@ class Player:
         if dashing:
             self.dash_timer -= 1
             dash_vx = self.facing * 14
-            self.rect.x += dash_vx
+            self.fx += dash_vx
         else:
-            self.rect.x += self.vx
+            self.fx += self.vx
         if self.dash_cooldown > 0:
             self.dash_cooldown -= 1
+        self.rect.x = int(self.fx)
         effective_vx = dash_vx if dashing else self.vx
         for r in rects + [m.rect for m in movs]:
             if self.rect.colliderect(r):
                 if effective_vx > 0:
                     self.rect.right = r.left
+                    self.fx = self.rect.x
                     if dashing: self.dash_timer = 0
                 elif effective_vx < 0:
                     self.rect.left = r.right
+                    self.fx = self.rect.x
                     if dashing: self.dash_timer = 0
 
         self.vy += GRAVITY * self.gdir
-        self.rect.y += self.vy
+        self.fy += self.vy
+        self.rect.y = int(self.fy)
         self.grounded = False
         for r in rects + [m.rect for m in movs]:
             if self.rect.colliderect(r):
                 if self.gdir > 0 and self.vy > 0:
-                    self.rect.bottom = r.top; self.vy = 0; self.grounded = True
+                    self.rect.bottom = r.top
+                    self.fy = self.rect.y
+                    self.vy = 0; self.grounded = True
                 elif self.gdir < 0 and self.vy < 0:
-                    self.rect.top = r.bottom; self.vy = 0; self.grounded = True
+                    self.rect.top = r.bottom
+                    self.fy = self.rect.y
+                    self.vy = 0; self.grounded = True
 
         for m in movs:
             if self.rect.colliderect(m.rect):
                 if self.gdir > 0 and self.vy >= 0:
-                    self.rect.bottom = m.rect.top; self.vy = 0; self.grounded = True
-                    self.rect.x += m.dx
-                    self.rect.y += m.dy
+                    self.rect.bottom = m.rect.top
+                    self.fy = self.rect.y
+                    self.vy = 0; self.grounded = True
+                    self.fx += m.dx
+                    self.fy += m.dy
+                    self.rect.x = int(self.fx)
+                    self.rect.y = int(self.fy)
                 elif self.gdir < 0 and self.vy <= 0:
-                    self.rect.top = m.rect.bottom; self.vy = 0; self.grounded = True
-                    self.rect.x += m.dx
-                    self.rect.y += m.dy
+                    self.rect.top = m.rect.bottom
+                    self.fy = self.rect.y
+                    self.vy = 0; self.grounded = True
+                    self.fx += m.dx
+                    self.fy += m.dy
+                    self.rect.x = int(self.fx)
+                    self.rect.y = int(self.fy)
 
         if self.rect.top > 1100 or self.rect.bottom < -500:
             self.alive = False
@@ -248,6 +266,8 @@ class Boss:
             # spawn shot just outside boss body to avoid self-collision
             spawn_x = self.rect.centerx + (1 if dx > 0 else -1) * 50
             spawn_y = self.rect.centery
+            # clamp spawn inside arena
+            spawn_x = max(self.min_x + 10, min(spawn_x, self.max_x - 10))
             self.shots.append([spawn_x, spawn_y, dx/d*4, dy/d*4])
         for s in self.shots[:]:
             s[0] += s[2]; s[1] += s[3]
@@ -586,15 +606,22 @@ def run_game(test_mode=False):
         if player.star > 0 and player.grounded and random.random() < 0.15 and not won and player.lives > 0:
             particles.append(Particle(player.rect.centerx, player.rect.bottom, YELLOW, 1.2, player.gdir))
 
-        player.update(plat_rects, level['moving'])
         for m in level['moving']: m.update()
+        player.update(plat_rects, level['moving'])
         for e in level['enemies']: e.update()
         for s in level['saws']: s.update()
 
         for s in level['spikes']:
-            if player.rect.colliderect(s):
-                player.alive = False
-                sounds.play('death')
+            if player.rect.colliderect(s) and not won:
+                if player.shield:
+                    player.shield = False
+                    sounds.play('shield')
+                    flash = 15
+                    for _ in range(30):
+                        particles.append(Particle(player.rect.centerx, player.rect.centery, CYAN, 6, player.gdir))
+                else:
+                    player.alive = False
+                    sounds.play('death')
         for sp in level['springs']:
             if player.rect.colliderect(sp) and not player.spring_cooldown:
                 player.vy = -17 * player.gdir; player.grounded = False
@@ -622,8 +649,10 @@ def run_game(test_mode=False):
                 for _ in range(20):
                     particles.append(Particle(sh.rect.centerx, sh.rect.centery, CYAN, 5, player.gdir))
 
-        # hazards: enemy / saw hits
+        # hazards: enemy / saw hits (skip if won)
         hit_hazard = False
+        if won:
+            hit_hazard = False
         for e in level['enemies']:
             if e.alive and player.rect.colliderect(e.rect):
                 # stomp check depends on gravity direction
@@ -736,6 +765,8 @@ def run_game(test_mode=False):
             player.lives -= 1
             if player.lives > 0:
                 player.alive = True
+            else:
+                player.alive = False
             if player.lives <= 0:
                 print('GAME_OVER')
                 if test_mode:
