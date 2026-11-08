@@ -19,15 +19,26 @@ GRAY = (110,110,110)
 DARK_GRAY = (60,60,70)
 SKIN = (255,200,150)
 SKIN_DARK = (230,170,120)
+BROWN = (139,69,19)
+SCREEN_W = 900
+SCREEN_H = 650
 
+
+_glow_cache = {}
 
 def draw_glow_circle(screen, color, pos, radius, alpha=60):
-    """Draw a soft glow around a point."""
-    glow = pygame.Surface((radius*4, radius*4), pygame.SRCALPHA)
-    for i in range(3):
-        r = radius * (1 - i*0.25)
-        a = alpha // (i+1)
-        pygame.draw.circle(glow, (*color, a), (radius*2, radius*2), int(r))
+    """Draw a soft glow around a point (cached for performance)."""
+    radius = max(2, int(radius))
+    key = (radius, color, alpha)
+    if key not in _glow_cache:
+        size = radius * 4
+        glow = pygame.Surface((size, size), pygame.SRCALPHA)
+        for i in range(3):
+            r = radius * (1 - i*0.25)
+            a = alpha // (i+1)
+            pygame.draw.circle(glow, (*color, a), (radius*2, radius*2), int(r))
+        _glow_cache[key] = glow
+    glow = _glow_cache[key]
     screen.blit(glow, (pos[0]-radius*2, pos[1]-radius*2), special_flags=pygame.BLEND_ADD)
 
 
@@ -99,7 +110,7 @@ def draw_player(screen, player, cam, time):
         pygame.draw.rect(screen, SKIN, (x+w-3, arm_y, 6, 12), border_radius=3)
 
     # Legs / boots
-    pygame.draw.rect(screen, BROWN := (139,69,19), (x+2, y+h-8, 12, 8), border_radius=3)
+    pygame.draw.rect(screen, BROWN, (x+2, y+h-8, 12, 8), border_radius=3)
     pygame.draw.rect(screen, BROWN, (x+w-14, y+h-8, 12, 8), border_radius=3)
 
     # Shield bubble
@@ -372,7 +383,7 @@ def draw_boss(screen, boss, cam, time):
     for s in boss.shots:
         sx = s[0] - cam
         sy = s[1]
-        draw_glow_circle(screen, LAVA := (255,80,30), (int(sx), int(sy)), 10, 40)
+        draw_glow_circle(screen, (255,80,30), (int(sx), int(sy)), 10, 40)
         pygame.draw.circle(screen, (255,80,30), (int(sx), int(sy)), 8)
         pygame.draw.circle(screen, YELLOW, (int(sx), int(sy)), 4)
         pygame.draw.circle(screen, WHITE, (int(sx)-2, int(sy)-2), 2)
@@ -402,8 +413,8 @@ def draw_coin(screen, coin, cam, time):
 
 def draw_star_pickup(screen, star, cam, time):
     """Draw star pickup with rotating animation and glow."""
-    x = star.rect.x - cam
-    y = star.rect.y
+    x = star.x - cam
+    y = star.y
     cx = x + 12
     cy = y + 12
 
@@ -440,8 +451,12 @@ def draw_spring(screen, spring, cam, time):
     pts = []
     for i in range(5):
         cy = y + h - 8 - i * 7
-        pts.append((x + (w//2 if i % 2 == 0 else 4), cy))
-        pts.append((x + (w-4 if i % 2 == 0 else w//2), cy - 3))
+        if i % 2 == 0:
+            pts.append((x + 4, cy))
+            pts.append((x + w - 4, cy - 3))
+        else:
+            pts.append((x + w - 4, cy))
+            pts.append((x + 4, cy - 3))
     pygame.draw.lines(screen, coil_color, False, pts, 3)
 
     # Top plate
@@ -460,15 +475,17 @@ def draw_spike(screen, spike, cam, player_gdir):
 
     if player_gdir > 0:
         pts = [(x, y+h), (x+w//2, y), (x+w, y+h)]
+        tip = (x+w//2, y)
     else:
         pts = [(x, y), (x+w//2, y+h), (x+w, y)]
+        tip = (x+w//2, y+h)
 
     # Base
     pygame.draw.polygon(screen, (80,80,90), pts)
-    # Highlight side
-    pygame.draw.polygon(screen, (140,140,150), [pts[0], pts[1], (x+w//2, y+h)])
-    # Dark side
-    pygame.draw.polygon(screen, (50,50,60), [pts[1], pts[2], (x+w//2, y+h)])
+    # Highlight side (left)
+    pygame.draw.polygon(screen, (140,140,150), [pts[0], tip, (x+w//2, y+h)])
+    # Dark side (right)
+    pygame.draw.polygon(screen, (50,50,60), [tip, pts[2], (x+w//2, y+h)])
     # Outline
     pygame.draw.polygon(screen, (30,30,40), pts, 1)
 
@@ -616,7 +633,7 @@ def draw_hud(screen, player, level, level_idx, total_levels, time):
 
     # Star timer
     if player.star > 0:
-        stxt = font.render(f'★ {player.star//60+1}s', True, YELLOW)
+        stxt = font.render(f'STAR {player.star//60+1}s', True, YELLOW)
         screen.blit(stxt, (rx + 100, 48))
 
     # Shield
