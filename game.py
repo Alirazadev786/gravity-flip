@@ -39,7 +39,8 @@ class Player:
         if not self.alive:
             return
         dash_vx = 0
-        if self.dash_timer > 0:
+        dashing = self.dash_timer > 0
+        if dashing:
             self.dash_timer -= 1
             dash_vx = self.facing * 14
             self.rect.x += dash_vx
@@ -47,11 +48,15 @@ class Player:
             self.rect.x += self.vx
         if self.dash_cooldown > 0:
             self.dash_cooldown -= 1
-        effective_vx = dash_vx if self.dash_timer > 0 else self.vx
+        effective_vx = dash_vx if dashing else self.vx
         for r in rects + [m.rect for m in movs]:
             if self.rect.colliderect(r):
-                if effective_vx > 0: self.rect.right = r.left
-                elif effective_vx < 0: self.rect.left = r.right
+                if effective_vx > 0:
+                    self.rect.right = r.left
+                    if dashing: self.dash_timer = 0
+                elif effective_vx < 0:
+                    self.rect.left = r.right
+                    if dashing: self.dash_timer = 0
 
         self.vy += GRAVITY * self.gdir
         self.rect.y += self.vy
@@ -211,6 +216,14 @@ class Boss:
             self.rect.left = self.min_x
         if self.rect.right > self.max_x:
             self.rect.right = self.max_x
+        # horizontal collision with platforms (push out if overlapping)
+        for r in platforms:
+            if self.rect.colliderect(r):
+                if self.rect.centerx < r.centerx:
+                    self.rect.right = r.left
+                else:
+                    self.rect.left = r.right
+        # vertical collision
         self.vy += GRAVITY
         self.rect.y += self.vy
         for r in platforms:
@@ -225,7 +238,10 @@ class Boss:
             dx = player.rect.centerx - self.rect.centerx
             dy = player.rect.centery - self.rect.centery
             d = math.hypot(dx, dy) or 1
-            self.shots.append([self.rect.centerx, self.rect.centery, dx/d*4, dy/d*4])
+            # spawn shot just outside boss body to avoid self-collision
+            spawn_x = self.rect.centerx + (1 if dx > 0 else -1) * 50
+            spawn_y = self.rect.centery
+            self.shots.append([spawn_x, spawn_y, dx/d*4, dy/d*4])
         for s in self.shots[:]:
             s[0] += s[2]; s[1] += s[3]
             # remove if off-screen OR hits a platform
