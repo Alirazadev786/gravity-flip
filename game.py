@@ -246,16 +246,17 @@ class Boss:
         graphics.draw_boss(screen, self, cam, time)
 
 class Particle:
-    def __init__(self, x, y, color, spread=3):
+    def __init__(self, x, y, color, spread=3, gdir=1):
         self.x = x; self.y = y
         self.vx = random.uniform(-spread, spread)
         self.vy = random.uniform(-spread, spread)
         self.life = random.randint(12, 28); self.color = color
+        self.gdir = gdir
     def update(self):
-        self.x += self.vx; self.y += self.vy; self.vy += 0.08; self.life -= 1
-    def draw(self, screen):
+        self.x += self.vx; self.y += self.vy; self.vy += 0.08 * self.gdir; self.life -= 1
+    def draw(self, screen, cam=0):
         if self.life > 0:
-            pygame.draw.circle(screen, self.color, (int(self.x), int(self.y)), max(2, self.life // 6))
+            pygame.draw.circle(screen, self.color, (int(self.x - cam), int(self.y)), max(2, self.life // 6))
 
 def make_levels():
     L = []
@@ -492,12 +493,12 @@ def run_game(test_mode=False):
                     flash = 8
                     sounds.play('flip')
                     for _ in range(22):
-                        particles.append(Particle(player.rect.centerx, player.rect.centery, CYAN, 5))
+                        particles.append(Particle(player.rect.centerx, player.rect.centery, CYAN, 5, player.gdir))
                 elif e.key == pygame.K_LSHIFT or e.key == pygame.K_RSHIFT:
                     if player.dash():
                         sounds.play('dash')
                         for _ in range(12):
-                            particles.append(Particle(player.rect.centerx, player.rect.centery, CYAN, 3))
+                            particles.append(Particle(player.rect.centerx, player.rect.centery, CYAN, 3, player.gdir))
                 elif e.key == pygame.K_r and (not player.alive or won):
                     levels = make_levels()
                     level_idx = 0
@@ -559,7 +560,7 @@ def run_game(test_mode=False):
             if ph.state:
                 plat_rects.append(ph.rect)
         if player.star > 0 and player.grounded and random.random() < 0.15:
-            particles.append(Particle(player.rect.centerx, player.rect.bottom, YELLOW, 1.2))
+            particles.append(Particle(player.rect.centerx, player.rect.bottom, YELLOW, 1.2, player.gdir))
 
         player.update(plat_rects, level['moving'])
         for m in level['moving']: m.update()
@@ -575,19 +576,19 @@ def run_game(test_mode=False):
                 player.vy = -17 * player.gdir; player.grounded = False
                 player.spring_cooldown = 20
                 sounds.play('spring')
-                for _ in range(14): particles.append(Particle(sp.centerx, sp.centery, ORANGE, 4))
+                for _ in range(14): particles.append(Particle(sp.centerx, sp.centery, ORANGE, 4, player.gdir))
         if player.spring_cooldown > 0:
             player.spring_cooldown -= 1
         for st in level['stars'][:]:
             if player.rect.colliderect(st):
                 level['stars'].remove(st); player.star = 360
                 sounds.play('star')
-                for _ in range(26): particles.append(Particle(st.centerx, st.centery, YELLOW, 6))
+                for _ in range(26): particles.append(Particle(st.centerx, st.centery, YELLOW, 6, player.gdir))
         for c in level['coins'][:]:
             if player.rect.colliderect(c):
                 level['coins'].remove(c); player.coins += 1
                 sounds.play('coin')
-                for _ in range(10): particles.append(Particle(c.centerx, c.centery, YELLOW))
+                for _ in range(10): particles.append(Particle(c.centerx, c.centery, YELLOW, 3, player.gdir))
         for sh in level.get('shields', [])[:]:
             sh.update()
             if player.rect.colliderect(sh.rect):
@@ -595,7 +596,7 @@ def run_game(test_mode=False):
                 player.shield = True
                 sounds.play('shield')
                 for _ in range(20):
-                    particles.append(Particle(sh.rect.centerx, sh.rect.centery, CYAN, 5))
+                    particles.append(Particle(sh.rect.centerx, sh.rect.centery, CYAN, 5, player.gdir))
 
         # hazards: enemy / saw hits
         hit_hazard = False
@@ -609,11 +610,11 @@ def run_game(test_mode=False):
                 if stomped:
                     e.alive = False; player.vy = -9 * player.gdir; player.coins += 5
                     sounds.play('hit')
-                    for _ in range(16): particles.append(Particle(e.rect.centerx, e.rect.centery, ORANGE, 4))
+                    for _ in range(16): particles.append(Particle(e.rect.centerx, e.rect.centery, ORANGE, 4, player.gdir))
                 elif player.star > 0:
                     e.alive = False; player.coins += 5
                     sounds.play('hit')
-                    for _ in range(16): particles.append(Particle(e.rect.centerx, e.rect.centery, YELLOW, 4))
+                    for _ in range(16): particles.append(Particle(e.rect.centerx, e.rect.centery, YELLOW, 4, player.gdir))
                 else:
                     hit_hazard = True
         for s in level['saws']:
@@ -628,7 +629,7 @@ def run_game(test_mode=False):
                 flash = 10
                 sounds.play('portal')
                 for _ in range(18):
-                    particles.append(Particle(pu.rect.centerx, pu.rect.centery, CYAN, 5))
+                    particles.append(Particle(pu.rect.centerx, pu.rect.centery, CYAN, 5, player.gdir))
         if player.portal_cooldown > 0:
             player.portal_cooldown -= 1
         if hit_hazard:
@@ -637,7 +638,7 @@ def run_game(test_mode=False):
                 sounds.play('shield')
                 flash = 15
                 for _ in range(30):
-                    particles.append(Particle(player.rect.centerx, player.rect.centery, CYAN, 6))
+                    particles.append(Particle(player.rect.centerx, player.rect.centery, CYAN, 6, player.gdir))
             else:
                 player.alive = False
                 sounds.play('death')
@@ -658,13 +659,13 @@ def run_game(test_mode=False):
                         sounds.play('boss_hit')
                         player.coins += 50
                         for _ in range(40):
-                            particles.append(Particle(boss.rect.centerx, boss.rect.centery, LAVA_RED, 7))
+                            particles.append(Particle(boss.rect.centerx, boss.rect.centery, LAVA_RED, 7, player.gdir))
                 elif boss_stomped:
                     if boss.hit():
                         sounds.play('boss_hit')
                         player.coins += 50
                         for _ in range(40):
-                            particles.append(Particle(boss.rect.centerx, boss.rect.centery, LAVA_RED, 7))
+                            particles.append(Particle(boss.rect.centerx, boss.rect.centery, LAVA_RED, 7, player.gdir))
                     player.vy = -12 * player.gdir
                 else:
                     if player.shield:
@@ -693,7 +694,9 @@ def run_game(test_mode=False):
                 if test_mode:
                     pygame.quit(); sys.exit(0)
 
-        if player.rect.colliderect(level['goal']):
+        # Boss level: goal only works after boss is defeated
+        boss_alive = 'boss' in level and level['boss'].alive
+        if player.rect.colliderect(level['goal']) and not boss_alive:
             if level_idx < len(levels)-1:
                 level_idx += 1; load_level(level_idx); flash = 15
                 sounds.play('powerup')
@@ -714,6 +717,19 @@ def run_game(test_mode=False):
             else:
                 player = Player(*level['start'], lives=player.lives)
                 flash = 20
+                # reset enemies to original positions and revive them
+                for e in level['enemies']:
+                    e.alive = True
+                    e.rect.x = e.start_x
+                    e.rect.y = e.start_y
+                # reset boss HP
+                if 'boss' in level:
+                    boss = level['boss']
+                    boss.alive = True
+                    boss.hp = boss.max_hp
+                    boss.shots = []
+                    boss.rect.x = 800
+                    boss.rect.y = 450
 
         target = player.rect.centerx - SCREEN_W//2
         cam += (target - cam) * 0.08
@@ -755,7 +771,7 @@ def run_game(test_mode=False):
         graphics.draw_goal_flag(screen, level['goal'], cam, time)
 
         player.draw(screen, cam, time)
-        for p in particles: p.draw(screen)
+        for p in particles: p.draw(screen, cam)
 
         if flash > 0 and flash % 4 == 0:
             ov = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
