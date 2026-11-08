@@ -137,6 +137,44 @@ class MovingPlatform:
             if self.rect.y > self.start + self.dist or self.rect.y < self.start:
                 self.speed *= -1
 
+
+class PortalFlip:
+    def __init__(self, x, y, w=40, h=90):
+        self.rect = pygame.Rect(x, y, w, h)
+        self.pulse = 0
+    def update(self):
+        self.pulse += 1
+    def draw(self, screen, cam):
+        x = self.rect.x - cam; y = self.rect.y
+        shrink = (self.pulse // 10) % 4
+        pygame.draw.rect(screen, CYAN, (x, y, self.rect.w, self.rect.h), border_radius=10)
+        pygame.draw.rect(screen, BLUE, (x+2, y+2, self.rect.w-4, self.rect.h-4), 2, border_radius=10)
+        pygame.draw.circle(screen, BLACK, (x+self.rect.w//2, y+self.rect.h//2), 6 + shrink)
+
+class PhasePlatform:
+    def __init__(self, rect, on_time=90, off_time=60):
+        self.rect = rect
+        self.on_time = on_time
+        self.off_time = off_time
+        self.timer = 0
+        self.state = True
+    def update(self):
+        if self.state:
+            self.timer += 1
+            if self.timer >= self.on_time:
+                self.state = False; self.timer = 0
+        else:
+            self.timer += 1
+            if self.timer >= self.off_time:
+                self.state = True; self.timer = 0
+    def draw(self, screen, cam):
+        if not self.state:
+            return
+        x = self.rect.x - cam; y = self.rect.y
+        pygame.draw.rect(screen, PURPLE, (x, y, self.rect.w, self.rect.h))
+        pygame.draw.rect(screen, (100,40,160), (x, y, self.rect.w, 6))
+
+
 class Particle:
     def __init__(self, x, y, color, spread=3):
         self.x = x; self.y = y
@@ -204,6 +242,26 @@ def make_levels():
         'coins': [pygame.Rect(480,500,20,20), pygame.Rect(520,500,20,20), pygame.Rect(560,500,20,20)],
         'goal': pygame.Rect(1160,30,24,550),
         'start': (60,500), 'theme': (40,10,50,180,60,160),
+    })
+    # Level 5: Phase Factory
+    L.append({
+        'name': 'Phase Factory',
+        'platforms': [pygame.Rect(-300,580,1500,40), pygame.Rect(-300,30,1500,40)],
+        'moving': [],
+        'enemies': [FlyEnemy(300,470,50,1.7), FlyEnemy(650,490,45,1.5), FlyEnemy(850,420,40,1.8,True)],
+        'saws': [Saw(500,460)],
+        'spikes': [pygame.Rect(150,540,40,40), pygame.Rect(190,540,40,40),
+                   pygame.Rect(200,30,40,40), pygame.Rect(240,30,40,40)],
+        'springs': [pygame.Rect(70,540,30,40)],
+        'stars': [pygame.Rect(720,450,20,20)],
+        'coins': [pygame.Rect(380,360,20,20), pygame.Rect(420,360,20,20),
+                  pygame.Rect(680,240,20,20), pygame.Rect(560,500,20,20)],
+        'goal': pygame.Rect(1160,30,24,550),
+        'start': (100,500),
+        'theme': (20,70,70,150,230,230),
+        'portals': [PortalFlip(450,460), PortalFlip(800,30)],
+        'phase': [PhasePlatform(pygame.Rect(350,360,120,30), 80, 50),
+                  PhasePlatform(pygame.Rect(700,280,120,30), 70, 60)],
     })
     return L
 
@@ -313,7 +371,11 @@ def run_game(test_mode=False):
         if keys[pygame.K_UP]:
             player.jump()
 
-        plat_rects = [p for p in level['platforms']]
+        plat_rects = list(level['platforms'])
+        for ph in level.get('phase', []):
+            ph.update()
+            if ph.state:
+                plat_rects.append(ph.rect)
         if player.star > 0 and player.grounded and random.random() < 0.15:
             particles.append(Particle(player.rect.centerx, player.rect.bottom, YELLOW, 1.2))
 
@@ -354,6 +416,13 @@ def run_game(test_mode=False):
             if player.rect.colliderect(s.rect):
                 if player.star > 0: shake = 14
                 else: hit_hazard = True
+        for pu in level.get('portals', []):
+            pu.update()
+            if player.rect.colliderect(pu.rect):
+                player.flip()
+                flash = 10
+                for _ in range(18):
+                    particles.append(Particle(pu.rect.centerx, pu.rect.centery, CYAN, 5))
         if hit_hazard:
             player.alive = False
 
@@ -401,6 +470,8 @@ def run_game(test_mode=False):
             x = m.rect.x - cam; y = m.rect.y
             pygame.draw.rect(screen, PURPLE, (x,y,m.rect.w,m.rect.h))
             pygame.draw.rect(screen, (100,40,160), (x,y,m.rect.w,6))
+        for ph in level.get('phase', []):
+            ph.draw(screen, cam)
         for s in level['spikes']:
             x = s.x - cam; y = s.y
             if player.gdir > 0:
@@ -427,6 +498,8 @@ def run_game(test_mode=False):
         for e in level['enemies']:
             if e.alive: e.draw(screen, cam)
         for s in level['saws']: s.draw(screen, cam)
+        for pu in level.get('portals', []):
+            pu.draw(screen, cam)
 
         gx = level['goal'].x - cam; gy = level['goal'].y
         gh = level['goal'].h
