@@ -72,10 +72,12 @@ class Player:
             if self.rect.colliderect(m.rect):
                 if self.gdir > 0 and self.vy >= 0:
                     self.rect.bottom = m.rect.top; self.vy = 0; self.grounded = True
-                    self.rect.x += m.vx
+                    self.rect.x += m.dx
+                    self.rect.y += m.dy
                 elif self.gdir < 0 and self.vy <= 0:
                     self.rect.top = m.rect.bottom; self.vy = 0; self.grounded = True
-                    self.rect.x += m.vx
+                    self.rect.x += m.dx
+                    self.rect.y += m.dy
 
         if self.rect.top > 1100 or self.rect.bottom < -500:
             self.alive = False
@@ -140,13 +142,17 @@ class MovingPlatform:
         self.rect = r; self.axis = axis; self.dist = dist; self.speed = speed
         self.start = r.x if axis == 'x' else r.y
         self.vx = speed if axis == 'x' else 0
+        self.vy = speed if axis == 'y' else 0
+        self.dx = 0
+        self.dy = 0
     def update(self):
+        self.dx = 0; self.dy = 0
         if self.axis == 'x':
-            self.rect.x += self.speed; self.vx = self.speed
+            self.rect.x += self.speed; self.vx = self.speed; self.dx = self.speed
             if self.rect.x > self.start + self.dist or self.rect.x < self.start:
                 self.speed *= -1
         else:
-            self.rect.y += self.speed; self.vx = 0
+            self.rect.y += self.speed; self.vx = 0; self.vy = self.speed; self.dy = self.speed
             if self.rect.y > self.start + self.dist or self.rect.y < self.start:
                 self.speed *= -1
 
@@ -561,21 +567,22 @@ def run_game(test_mode=False):
             screen.blit(ph, (SCREEN_W//2 - ph.get_width()//2, 340))
             pygame.display.flip()
             continue
-        if keys[pygame.K_LEFT]:
-            player.vx = -SPEED; player.facing = -1
-        if keys[pygame.K_RIGHT]:
-            player.vx = SPEED; player.facing = 1
-        if keys[pygame.K_UP]:
-            player.jump()
-        if keys[pygame.K_DOWN]:
-            player.jump()
+        if not won and player.lives > 0:
+            if keys[pygame.K_LEFT]:
+                player.vx = -SPEED; player.facing = -1
+            if keys[pygame.K_RIGHT]:
+                player.vx = SPEED; player.facing = 1
+            if keys[pygame.K_UP]:
+                player.jump()
+            if keys[pygame.K_DOWN]:
+                player.jump()
 
         plat_rects = list(level['platforms'])
         for ph in level.get('phase', []):
             ph.update()
             if ph.state:
                 plat_rects.append(ph.rect)
-        if player.star > 0 and player.grounded and random.random() < 0.15:
+        if player.star > 0 and player.grounded and random.random() < 0.15 and not won and player.lives > 0:
             particles.append(Particle(player.rect.centerx, player.rect.bottom, YELLOW, 1.2, player.gdir))
 
         player.update(plat_rects, level['moving'])
@@ -725,6 +732,8 @@ def run_game(test_mode=False):
 
         if not player.alive and not won:
             player.lives -= 1
+            if player.lives > 0:
+                player.alive = True
             if player.lives <= 0:
                 print('GAME_OVER')
                 if test_mode:
