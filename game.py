@@ -107,7 +107,6 @@ class Player:
             return
         self.gdir *= -1
         self.vy = 0
-        self.jumps_left = 1
 
     def draw(self, screen, cam, time=0):
         graphics.draw_player(screen, self, cam, time)
@@ -700,18 +699,19 @@ def run_game(test_mode=False):
                     else:
                         player.alive = False
                         sounds.play('death')
-            # boss shots
-            for s in boss.shots[:]:
-                shot_rect = pygame.Rect(int(s[0]) - 8, int(s[1]) - 8, 16, 16)
-                if player.rect.colliderect(shot_rect):
-                    boss.shots.remove(s)
-                    if player.shield:
-                        player.shield = False
-                        sounds.play('shield')
-                        flash = 15
-                    else:
-                        player.alive = False
-                        sounds.play('death')
+            # boss shots (only if player is alive and game not won)
+            if player.alive and not won:
+                for s in boss.shots[:]:
+                    shot_rect = pygame.Rect(int(s[0]) - 8, int(s[1]) - 8, 16, 16)
+                    if player.rect.colliderect(shot_rect):
+                        boss.shots.remove(s)
+                        if player.shield:
+                            player.shield = False
+                            sounds.play('shield')
+                            flash = 15
+                        else:
+                            player.alive = False
+                            sounds.play('death')
             if not boss.alive and not won:
                 won = True; flash = 20
                 sounds.play('win'); sounds.play('win2'); sounds.play('win3')
@@ -749,6 +749,7 @@ def run_game(test_mode=False):
                     e.alive = True
                     e.rect.x = e.start_x
                     e.rect.y = e.start_y
+                    e.t = random.uniform(0, 6.28)
                 # reset boss HP
                 if 'boss' in level:
                     boss = level['boss']
