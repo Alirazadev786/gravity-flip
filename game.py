@@ -1,6 +1,7 @@
 import sys, random, math
 import pygame
 import sounds
+import graphics
 
 SCREEN_W, SCREEN_H = 900, 650
 FPS = 60
@@ -99,19 +100,8 @@ class Player:
         self.vy = 0
         self.jumps_left = 1
 
-    def draw(self, screen, cam):
-        x = self.rect.x - cam; y = self.rect.y
-        w, h = self.rect.w, self.rect.h
-        body = RED
-        if self.star > 0:
-            body = [YELLOW, ORANGE, PURPLE, CYAN][(self.star // 6) % 4]
-        pygame.draw.rect(screen, BLACK, (x-2, y-8, w+4, h+10), 2)
-        pygame.draw.rect(screen, body, (x-2, y-6, w+4, 10))
-        pygame.draw.rect(screen, body, (x+2, y-10, 14, 6))
-        pygame.draw.rect(screen, (255,200,150), (x+3, y+2, w-6, 14))
-        pygame.draw.rect(screen, BLUE, (x, y+16, w, h-16))
-        ex = x + 21 if self.facing > 0 else x + 5
-        pygame.draw.circle(screen, BLACK, (ex, y+8), 3)
+    def draw(self, screen, cam, time=0):
+        graphics.draw_player(screen, self, cam, time)
 
 class FlyEnemy:
     def __init__(self, x, y, amp=60, speed=1.5, vertical=False):
@@ -126,15 +116,8 @@ class FlyEnemy:
             self.rect.y = self.start_y + math.sin(self.t) * self.amp
         else:
             self.rect.x = self.start_x + math.sin(self.t) * self.amp
-    def draw(self, screen, cam):
-        x = self.rect.x - cam; y = self.rect.y
-        pygame.draw.ellipse(screen, (150,50,30), (x, y, 34, 30))
-        pygame.draw.circle(screen, WHITE, (x+8, y+9), 4)
-        pygame.draw.circle(screen, WHITE, (x+26, y+9), 4)
-        pygame.draw.circle(screen, BLACK, (x+10, y+10), 2)
-        pygame.draw.circle(screen, BLACK, (x+24, y+10), 2)
-        pygame.draw.polygon(screen, (255,200,150), [(x+2,y+14),(x-8,y+6),(x-6,y+18)])
-        pygame.draw.polygon(screen, (255,200,150), [(x+32,y+14),(x+42,y+6),(x+40,y+18)])
+    def draw(self, screen, cam, time=0):
+        graphics.draw_fly_enemy(screen, self, cam, time)
 
 class Saw:
     def __init__(self, x, y):
@@ -142,15 +125,8 @@ class Saw:
         self.ang = 0
     def update(self):
         self.ang += 6
-    def draw(self, screen, cam):
-        cx = self.rect.centerx - cam; cy = self.rect.centery
-        pts = []
-        for i in range(8):
-            a = math.radians(self.ang + i*45)
-            r = 22 if i % 2 == 0 else 13
-            pts.append((cx + r*math.cos(a), cy + r*math.sin(a)))
-        pygame.draw.polygon(screen, GRAY, pts)
-        pygame.draw.circle(screen, BLACK, (int(cx), int(cy)), 5)
+    def draw(self, screen, cam, time=0):
+        graphics.draw_saw(screen, self, cam, time)
 
 class MovingPlatform:
     def __init__(self, r, axis, dist, speed):
@@ -174,12 +150,8 @@ class PortalFlip:
         self.pulse = 0
     def update(self):
         self.pulse += 1
-    def draw(self, screen, cam):
-        x = self.rect.x - cam; y = self.rect.y
-        shrink = (self.pulse // 10) % 4
-        pygame.draw.rect(screen, CYAN, (x, y, self.rect.w, self.rect.h), border_radius=10)
-        pygame.draw.rect(screen, BLUE, (x+2, y+2, self.rect.w-4, self.rect.h-4), 2, border_radius=10)
-        pygame.draw.circle(screen, BLACK, (x+self.rect.w//2, y+self.rect.h//2), 6 + shrink)
+    def draw(self, screen, cam, time=0):
+        graphics.draw_portal(screen, self, cam, time)
 
 class PhasePlatform:
     def __init__(self, rect, on_time=90, off_time=60):
@@ -197,12 +169,8 @@ class PhasePlatform:
             self.timer += 1
             if self.timer >= self.off_time:
                 self.state = True; self.timer = 0
-    def draw(self, screen, cam):
-        if not self.state:
-            return
-        x = self.rect.x - cam; y = self.rect.y
-        pygame.draw.rect(screen, PURPLE, (x, y, self.rect.w, self.rect.h))
-        pygame.draw.rect(screen, (100,40,160), (x, y, self.rect.w, 6))
+    def draw(self, screen, cam, time=0):
+        graphics.draw_phase_platform(screen, self, cam, time)
 
 
 class Shield:
@@ -211,11 +179,8 @@ class Shield:
         self.pulse = 0
     def update(self):
         self.pulse += 1
-    def draw(self, screen, cam):
-        x = self.rect.x - cam; y = self.rect.y
-        r = 12 + int(math.sin(self.pulse / 10) * 2)
-        pygame.draw.circle(screen, CYAN, (int(x + 12), int(y + 12)), r, 3)
-        pygame.draw.circle(screen, (0,150,200), (int(x + 12), int(y + 12)), r - 4, 2)
+    def draw(self, screen, cam, time=0):
+        graphics.draw_shield_pickup(screen, self, cam, time)
 
 class Boss:
     def __init__(self, x, y):
@@ -272,28 +237,8 @@ class Boss:
             self.alive = False
             return True
         return False
-    def draw(self, screen, cam):
-        x = self.rect.x - cam; y = self.rect.y
-        if self.hit_flash > 0 and self.hit_flash // 2 % 2 == 0:
-            body = (255,255,255)
-        else:
-            body = (180,40,40)
-        pygame.draw.rect(screen, DARK_GRAY, (x-4, y-4, self.rect.w+8, self.rect.h+8), 3)
-        pygame.draw.rect(screen, body, (x, y, self.rect.w, self.rect.h), border_radius=12)
-        pygame.draw.rect(screen, (120,20,20), (x+10, y+10, self.rect.w-20, self.rect.h-20), border_radius=8)
-        pygame.draw.circle(screen, YELLOW, (int(x+self.rect.w//2), int(y+30)), 10)
-        pygame.draw.circle(screen, BLACK, (int(x+self.rect.w//2), int(y+30)), 5)
-        pygame.draw.rect(screen, DARK_GRAY, (x-12, y+20, 14, 30))
-        pygame.draw.rect(screen, DARK_GRAY, (x+self.rect.w-2, y+20, 14, 30))
-        pygame.draw.rect(screen, DARK_GRAY, (x+12, y+self.rect.h-10, 20, 14))
-        pygame.draw.rect(screen, DARK_GRAY, (x+self.rect.w-32, y+self.rect.h-10, 20, 14))
-        bar_w = 80; bar_h = 8
-        bx = x + (self.rect.w - bar_w)//2
-        pygame.draw.rect(screen, BLACK, (bx-2, y-20, bar_w+4, bar_h+4))
-        pygame.draw.rect(screen, RED, (bx, y-18, bar_w * (self.hp/self.max_hp), bar_h))
-        for s in self.shots:
-            pygame.draw.circle(screen, LAVA_RED, (int(s[0]-cam), int(s[1])), 8)
-            pygame.draw.circle(screen, YELLOW, (int(s[0]-cam), int(s[1])), 4)
+    def draw(self, screen, cam, time=0):
+        graphics.draw_boss(screen, self, cam, time)
 
 class Particle:
     def __init__(self, x, y, color, spread=3):
@@ -486,6 +431,7 @@ def run_game(test_mode=False):
     won = False
     paused = False
     started = False
+    time = 0
 
     bg_cache = {}
 
@@ -520,7 +466,7 @@ def run_game(test_mode=False):
         cam = 0; fade = 25
 
     while running:
-        clock.tick(FPS); frames += 1
+        clock.tick(FPS); frames += 1; time += 1
         if test_mode and frames > 420:
             print('TEST_PASS'); pygame.quit(); sys.exit(0)
 
@@ -559,14 +505,28 @@ def run_game(test_mode=False):
         if not started:
             # START SCREEN
             screen.blit(render_bg(level['theme'], player.gdir), (0,0))
-            font = pygame.font.Font(None, 64)
-            title = font.render('GRAVITY FLIP', True, WHITE)
+            # Animated title with glow
+            title_pulse = 0.5 + 0.5 * math.sin(time * 0.05)
+            title_color = (100 + int(155 * title_pulse), 200, 255)
+            font = pygame.font.Font(None, 80)
+            title = font.render('GRAVITY FLIP', True, title_color)
+            title_shadow = font.render('GRAVITY FLIP', True, (0,0,40))
+            screen.blit(title_shadow, (SCREEN_W//2 - title.get_width()//2 + 4, 204))
             screen.blit(title, (SCREEN_W//2 - title.get_width()//2, 200))
-            f2 = pygame.font.Font(None, 30)
+            graphics.draw_glow_circle(screen, CYAN, (SCREEN_W//2, 240), 120, 30)
+            # Subtitle
+            f2 = pygame.font.Font(None, 32)
             sub = f2.render('Press ENTER to start', True, YELLOW)
-            screen.blit(sub, (SCREEN_W//2 - sub.get_width()//2, 300))
-            hint = f2.render('SPACE = flip | LEFT/RIGHT = move | UP/DOWN = jump | SHIFT = dash', True, (220,220,220))
-            screen.blit(hint, (SCREEN_W//2 - hint.get_width()//2, 360))
+            sub_pulse = 0.5 + 0.5 * math.sin(time * 0.08)
+            if sub_pulse > 0.7:
+                screen.blit(sub, (SCREEN_W//2 - sub.get_width()//2, 320))
+            # Controls
+            f3 = pygame.font.Font(None, 24)
+            hint = f3.render('SPACE = flip | LEFT/RIGHT = move | UP/DOWN = jump | SHIFT = dash', True, (220,220,220))
+            screen.blit(hint, (SCREEN_W//2 - hint.get_width()//2, 380))
+            # Level count
+            lvl = f3.render(f'{len(levels)} Levels • Boss Fight • Shields • Double Jump', True, (180,180,200))
+            screen.blit(lvl, (SCREEN_W//2 - lvl.get_width()//2, 420))
             pygame.display.flip()
             continue
         if paused:
@@ -756,60 +716,32 @@ def run_game(test_mode=False):
         screen.blit(render_bg(level['theme'], player.gdir), (0,0))
 
         for p in level['platforms']:
-            x = p.x - cam; y = p.y
-            if y < 100:
-                pygame.draw.rect(screen, BLUE, (x,y,p.w,p.h))
-                pygame.draw.rect(screen, (0,40,100), (x,y,p.w,8))
-            else:
-                pygame.draw.rect(screen, GREEN, (x,y,p.w,p.h))
-                pygame.draw.rect(screen, (0,80,30), (x,y,p.w,8))
+            graphics.draw_platform(screen, p, cam, time)
         for m in level['moving']:
-            x = m.rect.x - cam; y = m.rect.y
-            pygame.draw.rect(screen, PURPLE, (x,y,m.rect.w,m.rect.h))
-            pygame.draw.rect(screen, (100,40,160), (x,y,m.rect.w,6))
+            graphics.draw_moving_platform(screen, m, cam, time)
         for ph in level.get('phase', []):
-            ph.draw(screen, cam)
+            ph.draw(screen, cam, time)
         for s in level['spikes']:
-            x = s.x - cam; y = s.y
-            if player.gdir > 0:
-                pts = [(x,y+s.h),(x+s.w//2,y),(x+s.w,y+s.h)]
-            else:
-                pts = [(x,y),(x+s.w//2,y+s.h),(x+s.w,y)]
-            pygame.draw.polygon(screen, RED, pts)
+            graphics.draw_spike(screen, s, cam, player.gdir)
         for sp in level['springs']:
-            x = sp.x - cam; y = sp.y
-            pygame.draw.rect(screen, ORANGE, (x,y,30,40))
-            pygame.draw.rect(screen, YELLOW, (x+4,y+24,22,12))
+            graphics.draw_spring(screen, sp, cam, time)
         for st in level['stars']:
-            cx = st.centerx - cam; cy = st.centery
-            pts = []
-            for i in range(10):
-                a = math.pi*i/5 - math.pi/2
-                r = 12 if i%2==0 else 6
-                pts.append((cx + r*math.cos(a), cy + r*math.sin(a)))
-            pygame.draw.polygon(screen, YELLOW, pts)
+            graphics.draw_star_pickup(screen, st, cam, time)
         for c in level['coins']:
-            x = c.centerx - cam; y = c.centery
-            pygame.draw.circle(screen, YELLOW, (int(x),int(y)), 10)
-            pygame.draw.circle(screen, (255,250,180), (int(x),int(y)), 6)
+            graphics.draw_coin(screen, c, cam, time)
         for e in level['enemies']:
-            if e.alive: e.draw(screen, cam)
-        for s in level['saws']: s.draw(screen, cam)
+            if e.alive: e.draw(screen, cam, time)
+        for s in level['saws']: s.draw(screen, cam, time)
         for pu in level.get('portals', []):
-            pu.draw(screen, cam)
+            pu.draw(screen, cam, time)
         for sh in level.get('shields', []):
-            sh.draw(screen, cam)
+            sh.draw(screen, cam, time)
         if 'boss' in level and level['boss'].alive:
-            level['boss'].draw(screen, cam)
+            level['boss'].draw(screen, cam, time)
 
-        gx = level['goal'].x - cam; gy = level['goal'].y
-        gh = level['goal'].h
-        pygame.draw.rect(screen, (180,180,180), (gx, gy, 8, gh))
-        pygame.draw.circle(screen, YELLOW, (gx+4, gy+6), 10)
-        # flag cloth
-        pygame.draw.polygon(screen, RED, [(gx+8, gy+14), (gx+58, gy+24), (gx+8, gy+36)])
+        graphics.draw_goal_flag(screen, level['goal'], cam, time)
 
-        player.draw(screen, cam)
+        player.draw(screen, cam, time)
         for p in particles: p.draw(screen)
 
         if flash > 0 and flash % 4 == 0:
@@ -820,34 +752,8 @@ def run_game(test_mode=False):
             ov.fill((0,0,0, int(150 * fade/25))); screen.blit(ov, (0,0))
 
         # HUD panel
-        hud = pygame.Surface((SCREEN_W, 120), pygame.SRCALPHA)
-        hud.fill((0,0,0,110)); screen.blit(hud, (0,0))
+        graphics.draw_hud(screen, player, level, level_idx, len(levels), time)
         font = pygame.font.Font(None, 34)
-        font_small = pygame.font.Font(None, 24)
-
-        title = font.render(f'{level["name"]} — {level_idx+1}/{len(levels)}', True, WHITE)
-        screen.blit(title, (16, 10))
-        hint = font_small.render('SPACE = flip gravity   LEFT/RIGHT = move   UP = jump   ESC = menu', True, (220,220,220))
-        screen.blit(hint, (16, 44))
-
-        # gravity meter
-        txt = 'GRAVITY: DOWN' if player.gdir > 0 else 'GRAVITY: UP'
-        color = GREEN if player.gdir > 0 else ORANGE
-        gtxt = font.render(txt, True, color)
-        screen.blit(gtxt, (16, 76))
-
-        # hearts
-        for i in range(player.lives):
-            pygame.draw.rect(screen, RED, (SCREEN_W - 140 + i*28, 76, 22, 18))
-            pygame.draw.rect(screen, (150,20,20), (SCREEN_W - 140 + i*28, 76, 22, 5))
-        ctxt = font.render(f'Coins: {player.coins}', True, YELLOW)
-        screen.blit(ctxt, (SCREEN_W - 230, 14))
-        if player.star > 0:
-            stxt = font.render(f'STAR {player.star//60+1}s', True, YELLOW)
-            screen.blit(stxt, (SCREEN_W - 230, 50))
-        if player.shield:
-            shtxt = font.render('SHIELD', True, CYAN)
-            screen.blit(shtxt, (SCREEN_W - 230, 86))
         if won:
             wtxt = font.render('YOU WIN! Press R to restart', True, YELLOW)
             screen.blit(wtxt, (SCREEN_W//2 - 200, SCREEN_H//2))
