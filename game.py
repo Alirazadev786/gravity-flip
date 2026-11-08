@@ -17,35 +17,38 @@ ICE_BLUE = (180,220,255); LAVA_RED = (255,80,30)
 DARK_GRAY = (60,60,70)
 
 class Player:
-    def __init__(self, x, y):
+    def __init__(self, x, y, lives=3):
         self.rect = pygame.Rect(x, y, 30, 40)
         self.vx = 0; self.vy = 0
         self.gdir = 1       # 1 = down, -1 = up
         self.grounded = False
         self.alive = True
         self.coins = 0
-        self.lives = 3
+        self.lives = lives
         self.facing = 1
         self.star = 0
         self.shield = False
         self.jumps_left = 1
         self.dash_timer = 0
         self.dash_cooldown = 0
+        self.portal_cooldown = 0
 
     def update(self, rects, movs):
         if not self.alive:
             return
+        dash_vx = 0
         if self.dash_timer > 0:
             self.dash_timer -= 1
-            self.rect.x += self.facing * 14
+            dash_vx = self.facing * 14
+            self.rect.x += dash_vx
         else:
             self.rect.x += self.vx
         if self.dash_cooldown > 0:
             self.dash_cooldown -= 1
         for r in rects + [m.rect for m in movs]:
             if self.rect.colliderect(r):
-                if self.vx > 0: self.rect.right = r.left
-                elif self.vx < 0: self.rect.left = r.right
+                if dash_vx > 0 or self.vx > 0: self.rect.right = r.left
+                elif dash_vx < 0 or self.vx < 0: self.rect.left = r.right
 
         self.vy += GRAVITY * self.gdir
         self.rect.y += self.vy
@@ -226,6 +229,8 @@ class Boss:
         self.alive = True
         self.hit_flash = 0
         self.shots = []
+        self.min_x = 200
+        self.max_x = 1100
     def update(self, platforms, player):
         if not self.alive:
             return
@@ -234,6 +239,11 @@ class Boss:
             dx = player.rect.centerx - self.rect.centerx
             if abs(dx) > 30:
                 self.rect.x += self.vx if dx > 0 else -self.vx
+        # keep boss in arena
+        if self.rect.left < self.min_x:
+            self.rect.left = self.min_x
+        if self.rect.right > self.max_x:
+            self.rect.right = self.max_x
         self.vy += GRAVITY
         self.rect.y += self.vy
         for r in platforms:
@@ -469,7 +479,7 @@ def run_game(test_mode=False):
     levels = make_levels()
     level_idx = 0
     level = levels[0]
-    player = Player(*level['start'])
+    player = Player(*level['start'], lives=3)
     cam = 0; shake = 0; flash = 0
     fade = 0; particles = []
     running = True; frames = 0
@@ -502,9 +512,11 @@ def run_game(test_mode=False):
         bg_cache[key] = surf
         return surf
 
-    def load_level(idx):
+    def load_level(idx, keep_lives=True):
         nonlocal level, player, cam, fade
-        level = levels[idx]; player = Player(*level['start'])
+        old_lives = player.lives if keep_lives else 3
+        level = levels[idx]
+        player = Player(*level['start'], lives=old_lives)
         cam = 0; fade = 25
 
     while running:
@@ -536,7 +548,9 @@ def run_game(test_mode=False):
                         for _ in range(12):
                             particles.append(Particle(player.rect.centerx, player.rect.centery, CYAN, 3))
                 elif e.key == pygame.K_r and (not player.alive or won):
-                    load_level(0); won = False; player.lives = 3
+                    levels = make_levels()
+                    level_idx = 0
+                    load_level(0, keep_lives=False); won = False
                 elif e.key == pygame.K_ESCAPE:
                     paused = True
 
@@ -619,7 +633,12 @@ def run_game(test_mode=False):
         hit_hazard = False
         for e in level['enemies']:
             if e.alive and player.rect.colliderect(e.rect):
-                if abs(player.vy * player.gdir) > 3 and player.rect.bottom <= e.rect.centery + 12:
+                # stomp check depends on gravity direction
+                if player.gdir > 0:
+                    stomped = abs(player.vy) > 3 and player.rect.bottom <= e.rect.centery + 12
+                else:
+                    stomped = abs(player.vy) > 3 and player.rect.top >= e.rect.centery - 12
+                if stomped:
                     e.alive = False; player.vy = -9 * player.gdir; player.coins += 5
                     sounds.play('hit')
                     for _ in range(16): particles.append(Particle(e.rect.centerx, e.rect.centery, ORANGE, 4))
@@ -635,12 +654,15 @@ def run_game(test_mode=False):
                 else: hit_hazard = True
         for pu in level.get('portals', []):
             pu.update()
-            if player.rect.colliderect(pu.rect):
+            if player.rect.colliderect(pu.rect) and not player.portal_cooldown:
                 player.flip()
+                player.portal_cooldown = 30
                 flash = 10
                 sounds.play('portal')
                 for _ in range(18):
                     particles.append(Particle(pu.rect.centerx, pu.rect.centery, CYAN, 5))
+        if player.portal_cooldown > 0:
+            player.portal_cooldown -= 1
         if hit_hazard:
             if player.shield:
                 player.shield = False
@@ -681,7 +703,8 @@ def run_game(test_mode=False):
                         sounds.play('death')
             # boss shots
             for s in boss.shots[:]:
-                if player.rect.collidepoint(s[0], s[1]):
+                shot_rect = pygame.Rect(int(s[0]) - 8, int(s[1]) - 8, 16, 16)
+                if player.rect.colliderect(shot_rect):
                     boss.shots.remove(s)
                     if player.shield:
                         player.shield = False
@@ -714,9 +737,10 @@ def run_game(test_mode=False):
                 print('GAME_OVER')
                 if test_mode:
                     pygame.quit(); sys.exit(0)
-                player = Player(*level['start']); player.lives = 0
+                player = Player(*level['start'], lives=0)
             else:
-                player = Player(*level['start']); flash = 20
+                player = Player(*level['start'], lives=player.lives)
+                flash = 20
 
         target = player.rect.centerx - SCREEN_W//2
         cam += (target - cam) * 0.08
