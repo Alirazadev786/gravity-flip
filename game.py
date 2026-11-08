@@ -197,6 +197,8 @@ class Shield:
 
 class Boss:
     def __init__(self, x, y):
+        self.start_x = x
+        self.start_y = y
         self.rect = pygame.Rect(x, y, 90, 90)
         self.hp = 10
         self.max_hp = 10
@@ -521,7 +523,7 @@ def run_game(test_mode=False):
                         sounds.play('dash')
                         for _ in range(12):
                             particles.append(Particle(player.rect.centerx, player.rect.centery, CYAN, 3, player.gdir))
-                elif e.key == pygame.K_r and (not player.alive or won):
+                elif e.key == pygame.K_r and (not player.alive or won or player.lives <= 0):
                     levels = make_levels()
                     level_idx = 0
                     load_level(0, keep_lives=False); won = False
@@ -753,8 +755,8 @@ def run_game(test_mode=False):
                     boss.alive = True
                     boss.hp = boss.max_hp
                     boss.shots = []
-                    boss.rect.x = 800
-                    boss.rect.y = 450
+                    boss.rect.x = boss.start_x
+                    boss.rect.y = boss.start_y
 
         target = player.rect.centerx - SCREEN_W//2
         cam += (target - cam) * 0.08
