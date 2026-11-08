@@ -12,7 +12,7 @@ assert hasattr(game, 'Boss'), 'Boss missing'
 assert hasattr(game, 'Shield'), 'Shield missing'
 
 levels = game.make_levels()
-assert len(levels) == 9, f'expected 9 levels, got {len(levels)}'
+assert len(levels) == 12, f'expected 12 levels, got {len(levels)}'
 l5 = levels[4]
 assert l5['name'] == 'Phase Factory', l5['name']
 assert len(l5.get('portals', [])) == 2

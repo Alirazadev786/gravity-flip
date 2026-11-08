@@ -280,7 +280,7 @@ check('vertical platform carries player', abs(player.rect.y - (mp.rect.top - 40)
 # TEST 11: Level Structure
 # ============================================================
 print('\n=== TEST 11: Level Structure ===')
-check('9 levels exist', len(levels) == 9, f'got {len(levels)}')
+check('12 levels exist', len(levels) == 12, f'got {len(levels)}')
 for i, lv in enumerate(levels):
     check(f'level {i+1} has platforms', len(lv['platforms']) >= 2)
     check(f'level {i+1} has goal', 'goal' in lv)
